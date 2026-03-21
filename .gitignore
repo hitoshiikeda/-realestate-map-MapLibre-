@@ -1,5 +1,5 @@
 # Mapboxトークンを含む設定ファイル
-config.js
+# config.js
 
 # ローカル環境変数（REINFOLIB APIキーを含む）
 .env
