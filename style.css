@@ -1,0 +1,994 @@
+/* --- 基本レイアウト --- */
+
+body {
+
+margin: 0;
+
+padding: 0;
+
+font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+
+overflow: hidden;
+
+}
+
+
+
+#app {
+
+position: relative;
+
+height: 100vh;
+
+width: 100vw;
+
+}
+
+
+
+#map {
+
+position: absolute;
+
+top: 0;
+
+left: 0;
+
+width: 100%;
+
+height: 100%;
+
+z-index: 0;
+
+}
+
+
+
+/* UI変数 */
+
+:root {
+
+--ui-width: 400px;
+
+--ui-right-margin: 20px;
+
+--ui-gap: 8px;
+
+}
+
+
+
+/* --- 右上：検索・ツールエリア --- */
+
+#top-right-container {
+
+position: absolute;
+
+top: 20px;
+
+right: var(--ui-right-margin);
+
+width: var(--ui-width);
+
+z-index: 30;
+
+display: flex;
+
+flex-direction: column;
+
+gap: var(--ui-gap);
+
+pointer-events: none;
+
+transition: transform 0.3s ease-in-out;
+
+}
+
+body:not(.list-open) #top-right-container {
+
+transform: translateX(440px);
+
+}
+
+
+
+#top-right-container > * {
+
+pointer-events: auto;
+
+}
+
+
+
+.search-container {
+
+background: white;
+
+border-radius: 4px;
+
+box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+
+padding: 5px 10px;
+
+}
+
+
+
+.input-label {
+
+font-size: 10px;
+
+font-weight: bold;
+
+color: #666;
+
+display: block;
+
+margin-bottom: 2px;
+
+}
+
+
+
+.custom-input {
+
+width: 100%;
+
+padding: 6px;
+
+border: 1px solid #ddd;
+
+border-radius: 3px;
+
+font-size: 13px;
+
+outline: none;
+
+box-sizing: border-box;
+
+}
+
+
+
+.mapboxgl-ctrl-geocoder {
+
+min-width: 100%;
+
+width: 100%;
+
+box-shadow: none;
+
+border: 1px solid #ddd;
+
+border-radius: 3px;
+
+}
+
+
+
+.mapboxgl-ctrl-geocoder--input {
+
+height: 32px;
+
+padding: 6px 35px;
+
+font-size: 13px;
+
+}
+
+
+
+/* --- ツールボタン --- */
+
+.tools-row {
+
+display: flex;
+
+gap: 5px;
+
+width: 100%;
+
+}
+
+
+
+.tool-btn {
+
+background: white;
+
+border: 1px solid #ccc;
+
+border-radius: 4px;
+
+padding: 0;
+
+height: 34px;
+
+cursor: pointer;
+
+font-size: 12px;
+
+font-weight: bold;
+
+color: #444;
+
+flex: 1;
+
+text-align: center;
+
+box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+display: flex;
+
+align-items: center;
+
+justify-content: center;
+
+gap: 4px;
+
+white-space: nowrap;
+
+}
+
+
+
+.tool-btn:hover {
+
+background: #f0f0f0;
+
+}
+
+
+
+.tool-btn.active {
+
+background: #e0f2fe;
+
+border-color: #3b82f6;
+
+color: #1d4ed8;
+
+}
+
+
+
+.tool-btn.active-cancel {
+
+background: #fef2f2;
+
+border-color: #fca5a5;
+
+color: #dc2626;
+
+}
+
+
+
+.tool-btn.active-cancel:hover {
+
+background-color: #fee2e2;
+
+}
+
+
+
+/* サイドバー開閉タブ（常時表示） */
+#sidebar-toggle {
+
+position: absolute;
+
+top: 232px;
+
+right: 420px;
+
+z-index: 35;
+
+background: white;
+
+border: 1px solid #ddd;
+
+border-right: none;
+
+border-radius: 4px 0 0 4px;
+
+box-shadow: -2px 2px 6px rgba(0,0,0,0.15);
+
+padding: 16px 6px;
+
+cursor: pointer;
+
+font-size: 11px;
+
+font-weight: bold;
+
+color: #444;
+
+writing-mode: vertical-rl;
+
+text-orientation: mixed;
+
+letter-spacing: 0.05em;
+
+transition: right 0.3s ease-in-out;
+
+}
+
+#sidebar-toggle:hover {
+
+background: #f0f0f0;
+
+}
+
+body:not(.list-open) #sidebar-toggle {
+
+right: 0;
+
+}
+
+
+
+/* --- サイドバー --- */
+
+#sidebar {
+
+position: absolute;
+
+top: 172px;
+
+right: var(--ui-right-margin);
+
+bottom: 30px;
+
+width: var(--ui-width);
+
+background: rgba(255, 255, 255, 0.95);
+
+border: 1px solid #ddd;
+
+border-radius: 4px;
+
+display: flex;
+
+flex-direction: column;
+
+z-index: 20;
+
+box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+
+transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+
+backdrop-filter: blur(5px);
+
+}
+
+
+
+#sidebar.hidden {
+
+transform: translateX(420px);
+
+opacity: 0;
+
+pointer-events: none;
+
+}
+
+
+
+.sidebar-fixed-header {
+
+flex: 0 0 auto;
+
+padding: 15px;
+
+border-bottom: 1px solid #eee;
+
+background: #fff;
+
+border-radius: 4px 4px 0 0;
+
+}
+
+
+
+.sidebar-scroll-body {
+
+flex: 1;
+
+overflow-y: auto;
+
+padding: 10px;
+
+background: #f8f9fa;
+
+border-radius: 0 0 4px 4px;
+
+}
+
+
+
+/* フィルタ */
+
+.filter-row {
+
+display: flex;
+
+gap: 5px;
+
+margin-bottom: 8px;
+
+}
+
+
+
+.filter-select {
+
+width: 100%;
+
+padding: 6px;
+
+border: 1px solid #ccc;
+
+border-radius: 4px;
+
+font-size: 12px;
+
+}
+
+
+
+.range-inputs {
+
+display: flex;
+
+gap: 3px;
+
+align-items: center;
+
+}
+
+
+
+.range-input {
+
+width: 45%;
+
+padding: 3px;
+
+border: 1px solid #ccc;
+
+border-radius: 3px;
+
+font-size: 11px;
+
+}
+
+
+
+/* --- レイヤーコントロール --- */
+
+#layer-control {
+
+position: absolute;
+
+top: 20px;
+
+left: 20px;
+
+background: rgba(255, 255, 255, 0.98);
+
+border-radius: 8px;
+
+box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+
+z-index: 50;
+
+width: 300px;
+
+max-height: 85vh;
+
+overflow-y: auto;
+
+transition: all 0.2s;
+
+}
+
+
+
+#layer-header {
+
+padding: 10px 15px;
+
+font-weight: bold;
+
+font-size: 13px;
+
+cursor: pointer;
+
+background: #f8f9fa;
+
+border-bottom: 1px solid #eee;
+
+display: flex;
+
+justify-content: space-between;
+
+align-items: center;
+
+border-radius: 8px 8px 0 0;
+
+}
+
+
+
+.layer-actions {
+
+padding: 10px 15px;
+
+border-bottom: 1px solid #eee;
+
+background: #fff;
+
+}
+
+
+
+.clear-btn {
+
+font-size: 13px;
+
+font-weight: bold;
+
+color: #444;
+
+cursor: pointer;
+
+background: none;
+
+border: none;
+
+padding: 0;
+
+display: block;
+
+width: 100%;
+
+text-align: left;
+
+}
+
+
+
+.clear-btn:hover {
+
+color: #dc2626;
+
+background-color: #f0f0f0;
+
+}
+
+
+
+#layer-control.panel-closed #layer-header {
+
+border-radius: 8px;
+
+border-bottom: none;
+
+}
+
+
+
+#layer-content {
+
+padding: 10px;
+
+font-size: 12px;
+
+}
+
+
+
+/* --- ポップアップ・物件カード --- */
+
+.property-card {
+
+background: #fff;
+
+border-radius: 6px;
+
+padding: 10px;
+
+margin-bottom: 8px;
+
+border: 1px solid #eee;
+
+transition: all 0.2s;
+
+cursor: pointer;
+
+border-left: 4px solid transparent;
+
+}
+
+
+
+.property-card:hover {
+
+transform: translateY(-2px);
+
+box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+
+}
+
+
+
+.property-card.active {
+
+background-color: #f0f9ff;
+
+border-color: #3b82f6;
+
+border-left-color: #2563eb;
+
+}
+
+
+
+.popup-table {
+
+width: 100%;
+
+border-collapse: collapse;
+
+font-size: 11px;
+
+margin-top: 5px;
+
+}
+
+
+
+.popup-table th {
+
+background: #f3f4f6;
+
+border: 1px solid #e5e7eb;
+
+padding: 4px;
+
+text-align: left;
+
+white-space: nowrap;
+
+}
+
+
+
+.popup-table td {
+
+border: 1px solid #e5e7eb;
+
+padding: 4px;
+
+}
+
+
+
+/* バッジスタイル */
+
+.badge {
+
+padding: 2px 6px;
+
+border-radius: 4px;
+
+font-size: 10px;
+
+font-weight: bold;
+
+color: #fff;
+
+display: inline-flex;
+
+align-items: center;
+
+gap: 3px;
+
+}
+
+
+
+.badge-office { background-color: #3b82f6; }
+
+.badge-residence { background-color: #10b981; }
+
+.badge-retail { background-color: #f59e0b; }
+
+.badge-hotel { background-color: #ef4444; }
+
+.badge-logistics { background-color: #8b5cf6; }
+
+.badge-gray { background-color: #6b7280; }
+
+
+
+/* --- その他UI部品 --- */
+
+#legend-panel {
+
+position: absolute;
+
+bottom: 40px;
+
+left: 20px;
+
+background: rgba(255, 255, 255, 0.95);
+
+padding: 10px;
+
+border-radius: 4px;
+
+box-shadow: 0 0 10px rgba(0,0,0,0.2);
+
+z-index: 40;
+
+max-width: 300px;
+
+max-height: 300px;
+
+overflow-y: auto;
+
+display: none;
+
+}
+
+
+
+details > summary {
+
+cursor: pointer;
+
+margin-bottom: 4px;
+
+outline: none;
+
+list-style: none;
+
+font-weight: bold;
+
+}
+
+
+
+details > summary::-webkit-details-marker { display: none; }
+
+details > summary::before { content: '▶ '; font-size: 10px; color: #666; }
+
+details[open] > summary::before { content: '▼ '; }
+
+
+
+.layer-group {
+
+margin-left: 12px;
+
+margin-bottom: 4px;
+
+border-left: 1px solid #eee;
+
+padding-left: 8px;
+
+}
+
+
+
+.layer-item {
+
+display: flex;
+
+align-items: center;
+
+gap: 6px;
+
+margin-bottom: 4px;
+
+cursor: pointer;
+
+}
+
+
+
+.uniform-text {
+
+font-size: 12px;
+
+color: #333;
+
+white-space: nowrap;
+
+}
+
+
+
+/* Mapbox UIの調整 */
+
+.mapboxgl-ctrl-group { display: none !important; }
+
+.mapboxgl-ctrl-bottom-right .mapboxgl-ctrl-group { display: block !important; }
+
+.mapboxgl-ctrl-bottom-right { transition: right 0.3s ease-in-out; right: 20px !important; bottom: 20px !important; }
+
+body.list-open .mapboxgl-ctrl-bottom-right { right: 440px !important; }
+
+
+
+#basemap-select {
+
+height: 32px;
+
+padding: 0 8px;
+
+background-color: white;
+
+border: 1px solid #e5e7eb;
+
+border-radius: 4px;
+
+font-size: 12px;
+
+outline: none;
+
+cursor: pointer;
+
+}
+
+
+
+/* スクロールバー */
+
+::-webkit-scrollbar { width: 6px; }
+
+::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+
+
+/* デュアルレンジスライダー */
+.dual-range-wrap {
+    position: relative;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0 2px;
+}
+.dual-range-track-bg {
+    position: absolute;
+    left: 0; right: 0;
+    height: 4px;
+    background: #e5e7eb;
+    border-radius: 2px;
+}
+.dual-range-track-fill {
+    position: absolute;
+    height: 4px;
+    background: #3b82f6;
+    border-radius: 2px;
+}
+.dual-range-input {
+    position: absolute;
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    pointer-events: none;
+    height: 4px;
+    margin: 0;
+}
+.dual-range-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #3b82f6;
+    cursor: pointer;
+    pointer-events: all;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.dual-range-input::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #3b82f6;
+    cursor: pointer;
+    pointer-events: all;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.dual-range-tip {
+    position: absolute;
+    top: 2px;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid #bfdbfe;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    pointer-events: none;
+}
+.dual-range-tip::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 3px solid transparent;
+    border-top-color: #bfdbfe;
+}
+
+/* 物件ポップアップ：縦スクロール対応 */
+.property-popup .mapboxgl-popup-content {
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 16px 16px 12px;
+}
+
+/* ポップアップの閉じるボタン（×）の配置調整 */
+
+.mapboxgl-popup-close-button {
+
+padding: 8px 12px !important; /* ボタン周囲のクリック領域と余白を確保 */
+
+font-size: 18px; /* バツ印を少し大きくして見やすく */
+
+color: #999; /* 色を少し抑えて上品に */
+
+outline: none;
+
+}
+
+
+
+.mapboxgl-popup-close-button:hover {
+
+background-color: transparent; /* ホバー時の背景を消す（お好みで） */
+
+color: #333; /* ホバー時にバツ印を濃くする */
+
+}
+
+
+
+/* 選択された物件カードのハイライト */
+
+.active-card {
+
+background-color: #eff6ff !important; /* 薄い青 */
+
+border-left: 4px solid #3b82f6 !important;
+
+transition: all 0.2s ease;
+
+}
+
+
+
+.property-card {
+
+cursor: pointer;
+
+padding: 10px;
+
+border-bottom: 1px solid #eee;
+
+}
+
+.property-card:hover {
+
+background-color: #f9fafb;
+
+}

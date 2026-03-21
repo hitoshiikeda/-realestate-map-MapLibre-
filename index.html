@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>不動産情報検索プラットフォーム</title>
+    
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css" rel="stylesheet" />
+    
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-language/v1.0.0/mapbox-gl-language.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" type="text/css">
+
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <link rel="stylesheet" href="style.css">
+
+</head>
+<body class="list-open">
+
+<div id="app">
+    <div id="map"></div>
+
+    <div id="top-right-container">
+        <div class="search-row" style="display:flex; gap:5px;">
+            <div class="search-container" style="flex:1;">
+                <span class="input-label">案件検索 (契約番号・物件名・所在地)</span>
+                <div style="position:relative; display:flex; align-items:center;">
+                    <input type="text" id="keyword-search" class="custom-input" placeholder="例: 千代田ビル..." onkeyup="applyFilters(); toggleKeywordClear();" style="padding-right:24px; width:100%;">
+                    <button id="keyword-clear-btn" onclick="clearKeywordSearch()" style="display:none; position:absolute; right:4px; background:none; border:none; cursor:pointer; color:#9ca3af; font-size:14px; line-height:1; padding:2px 4px;">✕</button>
+                </div>
+            </div>
+            <div class="search-container" style="flex:1;">
+                <span class="input-label">地図検索 (駅名・地名)</span>
+                <div style="position:relative; display:flex; align-items:center;">
+                    <div id="geocoder" style="flex:1;"></div>
+                    <button id="geocoder-clear-btn" onclick="clearGeocoderSearch()" style="display:none; position:absolute; right:4px; background:none; border:none; cursor:pointer; color:#9ca3af; font-size:14px; line-height:1; padding:2px 4px; z-index:10;">✕</button>
+                </div>
+            </div>
+        </div>
+        <div class="tools-row">
+            <button class="tool-btn" onclick="shareState()">🔗 リンク共有</button>
+            <button class="tool-btn" onclick="exportExcel()">📊 Excel出力</button>
+            <button class="tool-btn" onclick="exportPDF()">👁 プレビュー表示</button>
+        </div>
+        <div class="tools-row">
+            <button class="tool-btn" id="btn-draw-toggle" onclick="toggleDrawMode()">📐 範囲選択</button>
+            <button class="tool-btn" id="btn-circle-toggle" onclick="toggleCircleMode()">⭕ 円範囲選択</button>
+            <button class="tool-btn" id="btn-municipality-toggle" onclick="toggleMunicipalityMode()">🗾 市区町村選択</button>
+        </div>
+    </div>
+
+    <!-- 一覧表示/非表示 タブボタン（常時表示） -->
+    <button id="sidebar-toggle" onclick="toggleSidebar()">一覧非表示</button>
+
+    <div id="sidebar">
+        <div class="sidebar-fixed-header">
+            <div class="filter-row" style="justify-content:space-between; align-items:center;">
+                <span style="font-size:11px; align-self:center;">該当件数: <strong id="count-display" style="color:#2563eb; font-size:14px;">0</strong> 件</span>
+                <button onclick="clearFilters()" style="font-size:10px; padding:2px 10px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; color:#374151;">フィルタ解除</button>
+            </div>
+            <div class="filter-row">
+                <select id="filter-asset" class="filter-select" onchange="applyFilters()">
+                    <option value="all">アセットタイプ: 全て</option>
+                    <option value="オフィス">オフィス</option>
+                    <option value="レジデンス">レジデンス</option>
+                    <option value="商業施設">商業施設</option>
+                    <option value="ホテル">ホテル</option>
+                    <option value="物流施設">物流施設</option>
+                </select>
+            </div>
+            <div class="filter-row">
+                <select id="filter-contract" class="filter-select" onchange="applyFilters()">
+                    <option value="all">契約形態: 全て</option>
+                </select>
+            </div>
+            <div class="filter-row" style="flex-direction:column; gap:2px;">
+                <div onclick="toggleYieldSlider()" style="font-size:10px; color:#374151; cursor:pointer; display:flex; align-items:center; gap:4px; user-select:none;">
+                    <span>利回り</span>
+                    <span id="yield-range-label" style="color:#2563eb; font-weight:600;"></span>
+                    <span id="yield-toggle-arrow" style="font-size:8px; color:#9ca3af;">▶</span>
+                </div>
+                <div id="yield-slider-area" style="display:none; position:relative; padding-top:20px; margin-top:2px;">
+                    <div id="yield-min-tip" class="dual-range-tip">0.0%</div>
+                    <div id="yield-max-tip" class="dual-range-tip">20.0%</div>
+                    <div class="dual-range-wrap">
+                        <div class="dual-range-track-bg"></div>
+                        <div id="yield-track-fill" class="dual-range-track-fill"></div>
+                        <input type="range" id="yield-min" min="0" max="20" step="0.1" value="0"  class="dual-range-input" oninput="onYieldSlider()">
+                        <input type="range" id="yield-max" min="0" max="20" step="0.1" value="20" class="dual-range-input" oninput="onYieldSlider()">
+                    </div>
+                    <div style="text-align:right; margin-top:4px;">
+                        <button onclick="resetYieldSlider()" style="font-size:9px; padding:1px 8px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:3px; cursor:pointer; color:#6b7280;">スライサー設定解除</button>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-row" style="flex-direction:column; gap:2px;">
+                <div onclick="toggleCompletionSlider()" style="font-size:10px; color:#374151; cursor:pointer; display:flex; align-items:center; gap:4px; user-select:none;">
+                    <span>竣工年月</span>
+                    <span id="completion-range-label" style="color:#2563eb; font-weight:600;"></span>
+                    <span id="completion-toggle-arrow" style="font-size:8px; color:#9ca3af;">▶</span>
+                </div>
+                <div id="completion-slider-area" style="display:none; position:relative; padding-top:20px; margin-top:2px;">
+                    <div id="completion-min-tip" class="dual-range-tip">1950年</div>
+                    <div id="completion-max-tip" class="dual-range-tip">2030年</div>
+                    <div class="dual-range-wrap">
+                        <div class="dual-range-track-bg"></div>
+                        <div id="completion-track-fill" class="dual-range-track-fill"></div>
+                        <input type="range" id="completion-min" min="1950" max="2030" step="1" value="1950" class="dual-range-input" oninput="onCompletionSlider()">
+                        <input type="range" id="completion-max" min="1950" max="2030" step="1" value="2030" class="dual-range-input" oninput="onCompletionSlider()">
+                    </div>
+                    <div style="text-align:right; margin-top:4px;">
+                        <button onclick="resetCompletionSlider()" style="font-size:9px; padding:1px 8px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:3px; cursor:pointer; color:#6b7280;">スライサー設定解除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="listing" class="sidebar-scroll-body"></div>
+    </div>
+
+    <div id="layer-control" class="panel-closed">
+        <div id="layer-header" onclick="toggleLayerMenu()">
+            <span id="layer-header-text">レイヤー設定表示</span>
+            <span>▼</span>
+        </div>
+        <div class="layer-actions">
+            <button class="clear-btn" onclick="clearAllLayers()">全てのチェックを外す</button>
+        </div>
+        
+    <div id="layer-content" style="display: none; padding: 10px;">
+            <div class="mb-3 pb-2 border-b">
+                <div class="font-bold mb-1">ベースマップ</div>
+                <select id="basemap-select" class="w-full" onchange="changeBaseMap()">
+                    <option value="mapbox://styles/mapbox/light-v11">標準 (ライト)</option>
+                    <option value="mapbox://styles/mapbox/streets-v12">標準 (ストリート)</option>
+                    <option value="mapbox://styles/mapbox/satellite-streets-v12">衛星画像</option>
+                    <option value="mapbox://styles/mapbox/dark-v11">ダークモード</option>
+                </select>
+            </div>
+
+            <label class="layer-item uniform-text">
+                <input type="checkbox" id="toggle-3d" onchange="toggleLayer('3d-buildings')"> 3D建物形状
+            </label>
+            <label class="layer-item uniform-text">
+                <input type="checkbox" id="toggle-terrain" onchange="toggleTerrain()"> 3D地形(高低差)
+            </label>
+
+            <details open>
+                <summary class="uniform-text">国土数値情報</summary>
+                <div class="layer-group">
+                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-zoning" onchange="toggleLayer('zoning-layer')"> 用途地域</label>
+                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-landprice" onchange="toggleLayer('landprice-layer')"> 地価公示</label>
+                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-landprice-heat" onchange="toggleLayer('landprice-heat')"> 地価公示(ヒートマップ)</label>
+                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-pop-mesh" onchange="toggleLayer('pop-mesh-layer')"> 将来推計人口(増減)</label>
+                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-pop-mesh-total" onchange="toggleLayer('pop-mesh-total-layer')"> 将来推計人口(総人口数)</label>
+                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-stations" onchange="toggleLayer('stations-circle')"> 駅別乗降客数</label>
+                </div>
+            </details>
+
+            <details open>
+                <summary class="uniform-text">価格情報</summary>
+                <div class="layer-group">
+                    <label class="layer-item uniform-text" title="この機能はローカル環境（proxy.js起動時）のみ利用可能です"><input type="checkbox" id="toggle-appraisal" disabled style="cursor:not-allowed;opacity:0.4;"> 鑑定評価書情報 <span style="font-size:10px;color:#9ca3af;">※ローカル環境のみ</span></label>
+                    <label class="layer-item uniform-text" title="この機能はローカル環境（proxy.js起動時）のみ利用可能です"><input type="checkbox" id="toggle-transaction" disabled style="cursor:not-allowed;opacity:0.4;"> 不動産価格(取引価格・成約価格) <span style="font-size:10px;color:#9ca3af;">※ローカル環境のみ</span></label>
+                </div>
+            </details>
+
+            <details open>
+                <summary class="uniform-text">ハザード情報 (重ねるハザードマップ)</summary>
+                <div class="layer-group">
+                    <details open>
+                        <summary class="uniform-text font-normal">洪水</summary>
+                        <div class="layer-group">
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="flood-l2" onchange="updateHazards()"> 洪水浸水想定区域（想定最大規模）</label>
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="flood-l1" onchange="updateHazards()"> 洪水浸水想定区域（計画規模）</label>
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="flood-duration" onchange="updateHazards()"> 浸水継続時間（想定最大規模）</label>
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="flood-collapse-flow" onchange="updateHazards()"> 家屋倒壊等氾濫想定区域（氾濫流）</label>
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="flood-collapse-erosion" onchange="updateHazards()"> 家屋倒壊等氾濫想定区域（河岸侵食）</label>
+                        </div>
+                    </details>
+                    <details open>
+                        <summary class="uniform-text font-normal">内水（雨水出水）</summary>
+                        <div class="layer-group">
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="inland-flood" onchange="updateHazards()"> 内水（雨水出水）浸水想定区域</label>
+                        </div>
+                    </details>
+                    <details open>
+                        <summary class="uniform-text font-normal">高潮</summary>
+                        <div class="layer-group">
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="hightide" onchange="updateHazards()"> 高潮浸水想定区域</label>
+                        </div>
+                    </details>
+                    <details open>
+                        <summary class="uniform-text font-normal">津波</summary>
+                        <div class="layer-group">
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="tsunami" onchange="updateHazards()"> 津波浸水想定</label>
+                        </div>
+                    </details>
+                    <details open>
+                        <summary class="uniform-text font-normal">土砂災害</summary>
+                        <div class="layer-group">
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="landslide-flow" onchange="updateHazards()"> 土砂災害警戒区域（土石流）</label>
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="landslide-steep" onchange="updateHazards()"> 土砂災害警戒区域（急傾斜地の崩壊）</label>
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="landslide-slide" onchange="updateHazards()"> 土砂災害警戒区域（地すべり）</label>
+                            <label class="layer-item uniform-text"><input type="checkbox" class="hazard-chk" data-layer="avalanche" onchange="updateHazards()"> 雪崩危険箇所</label>
+                        </div>
+                    </details>
+                </div>
+            </details>
+        </div>
+    </div>
+    </div>
+
+    <div id="legend-panel">
+        <h4 class="font-bold text-xs mb-2 border-b">凡例</h4>
+        <div id="legend-content" class="text-xs"></div>
+    </div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
