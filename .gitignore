@@ -1,12 +1,12 @@
+# Mapboxトークンを含む設定ファイル
+config.js
+
 # ローカル環境変数（REINFOLIB APIキーを含む）
 .env
 
 # proxy.js は REINFOLIB API キーを含むためローカル専用
 proxy.js
 
-# 物件データ（社外秘）
-buildingInfo.xlsx
-*.xlsx
 
 # GeoJSONデータ（サイズが大きい場合や社外秘データ）
 # 必要に応じてコメントアウトを解除
