@@ -1,5 +1,6 @@
-# APIキーを含む設定ファイル（絶対にコミットしない）
-config.js
+# APIキーを含む設定ファイル（ローカル上書き用）
+# config.js はAPIキー無しの状態でコミット済み
+# ローカルで上書きする場合は git update-index --skip-worktree config.js を実行
 
 # ローカル環境変数（REINFOLIB APIキーを含む）
 .env

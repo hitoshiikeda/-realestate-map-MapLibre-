@@ -1396,6 +1396,7 @@ function getPrefectureCode() {
 }
 
 async function fetchReinfolib(endpoint, params) {
+    if (!REINFOLIB_BASE) throw new Error('REINFOLIB API はローカル環境でのみ利用可能です');
     const url = new URL(`${REINFOLIB_BASE}/${endpoint}`);
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
     const res = await fetch(url.toString());
@@ -2476,7 +2477,7 @@ async function generateAIReport() {
         return;
     }
 
-    if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY') {
+    if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY' || OPENAI_API_KEY === '') {
         showToast('config.js に OpenAI API キーを設定してください');
         return;
     }
