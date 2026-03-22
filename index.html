@@ -5,14 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>不動産情報検索プラットフォーム</title>
     
-    <script src="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js"></script>
-    <link href="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css" rel="stylesheet" />
-    
-    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-language/v1.0.0/mapbox-gl-language.js"></script>
-    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
-    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css" />
-    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
-    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" type="text/css">
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <script src="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css" type="text/css" />
 
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -41,7 +38,7 @@
             <div class="search-container" style="flex:1;">
                 <span class="input-label">地図検索 (駅名・地名)</span>
                 <div style="position:relative; display:flex; align-items:center;">
-                    <div id="geocoder" style="flex:1;"></div>
+                    <input type="text" id="geocoder-input" class="custom-input" placeholder="場所を検索..." style="padding-right:24px; width:100%;" onkeydown="if(event.key==='Enter') geocoderSearch();">
                     <button id="geocoder-clear-btn" onclick="clearGeocoderSearch()" style="display:none; position:absolute; right:4px; background:none; border:none; cursor:pointer; color:#9ca3af; font-size:14px; line-height:1; padding:2px 4px; z-index:10;">✕</button>
                 </div>
             </div>
@@ -55,6 +52,11 @@
             <button class="tool-btn" id="btn-draw-toggle" onclick="toggleDrawMode()">📐 範囲選択</button>
             <button class="tool-btn" id="btn-circle-toggle" onclick="toggleCircleMode()">⭕ 円範囲選択</button>
             <button class="tool-btn" id="btn-municipality-toggle" onclick="toggleMunicipalityMode()">🗾 市区町村選択</button>
+        </div>
+        <div class="tools-row">
+            <button class="tool-btn" onclick="document.getElementById('custom-upload-input').click()">📂 データ取込</button>
+            <input type="file" id="custom-upload-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleCustomUpload(event)">
+            <button class="tool-btn" onclick="generateAIReport()">🤖 AIレポート</button>
         </div>
     </div>
 
@@ -139,10 +141,10 @@
             <div class="mb-3 pb-2 border-b">
                 <div class="font-bold mb-1">ベースマップ</div>
                 <select id="basemap-select" class="w-full" onchange="changeBaseMap()">
-                    <option value="mapbox://styles/mapbox/light-v11">標準 (ライト)</option>
-                    <option value="mapbox://styles/mapbox/streets-v12">標準 (ストリート)</option>
-                    <option value="mapbox://styles/mapbox/satellite-streets-v12">衛星画像</option>
-                    <option value="mapbox://styles/mapbox/dark-v11">ダークモード</option>
+                    <option value="style-light">標準 (ライト)</option>
+                    <option value="style-streets">標準 (ストリート)</option>
+                    <option value="style-satellite">衛星画像</option>
+                    <option value="style-dark">ダークモード</option>
                 </select>
             </div>
 
@@ -160,7 +162,7 @@
                     <label class="layer-item uniform-text"><input type="checkbox" id="toggle-landprice" onchange="toggleLayer('landprice-layer')"> 地価公示</label>
                     <label class="layer-item uniform-text"><input type="checkbox" id="toggle-landprice-heat" onchange="toggleLayer('landprice-heat')"> 地価公示(ヒートマップ)</label>
                     <label class="layer-item uniform-text"><input type="checkbox" id="toggle-pop-mesh" onchange="toggleLayer('pop-mesh-layer')"> 将来推計人口(増減)</label>
-                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-pop-mesh-total" onchange="toggleLayer('pop-mesh-total-layer')"> 将来推計人口(総人口数)</label>
+                    <label class="layer-item uniform-text"><input type="checkbox" id="toggle-pop-mesh-total" onchange="toggleLayer('pop-mesh-total-layer'); toggleTimelinePanel()"> 将来推計人口(総人口数)</label>
                     <label class="layer-item uniform-text"><input type="checkbox" id="toggle-stations" onchange="toggleLayer('stations-circle')"> 駅別乗降客数</label>
                 </div>
             </details>
@@ -219,9 +221,37 @@
     </div>
     </div>
 
+    <div id="timeline-panel" style="display:none;">
+        <div class="timeline-header">
+            <span class="timeline-title">将来推計人口 タイムライン</span>
+            <button onclick="closeTimeline()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:14px;line-height:1;">✕</button>
+        </div>
+        <div class="timeline-body">
+            <button id="timeline-play-btn" onclick="toggleTimelinePlay()" class="timeline-play-btn">▶</button>
+            <span id="timeline-year-label" class="timeline-year-label">2020年</span>
+            <input type="range" id="timeline-slider" min="0" max="6" step="1" value="0" oninput="onTimelineSlider()" class="timeline-slider">
+            <div class="timeline-ticks">
+                <span>2020</span><span>2025</span><span>2030</span><span>2035</span><span>2040</span><span>2045</span><span>2050</span>
+            </div>
+        </div>
+    </div>
+
     <div id="legend-panel">
         <h4 class="font-bold text-xs mb-2 border-b">凡例</h4>
         <div id="legend-content" class="text-xs"></div>
+    </div>
+</div>
+
+<!-- カスタムデータ列マッピングモーダル -->
+<div id="upload-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:none; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:8px; padding:20px; width:400px; max-height:80vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+        <h3 style="font-size:14px; font-weight:700; color:#1e3a5f; margin-bottom:12px;">データ列マッピング</h3>
+        <p style="font-size:11px; color:#6b7280; margin-bottom:12px;">アップロードしたファイルの列を選択してください。</p>
+        <div id="upload-mapping-fields" style="font-size:12px;"></div>
+        <div style="display:flex; gap:8px; margin-top:16px; justify-content:flex-end;">
+            <button onclick="closeUploadModal()" style="padding:6px 16px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">キャンセル</button>
+            <button onclick="applyCustomUpload()" style="padding:6px 16px; border:none; border-radius:4px; background:#2563eb; color:#fff; cursor:pointer; font-size:12px; font-weight:600;">地図に表示</button>
+        </div>
     </div>
 </div>
 

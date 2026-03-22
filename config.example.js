@@ -10,11 +10,23 @@
  * APIキーが誤ってリポジトリに含まれることはありません。
  */
 
-// 1. Mapbox アクセストークン
-//    取得先: https://account.mapbox.com/
-const MAPBOX_TOKEN = 'YOUR_MAPBOX_ACCESS_TOKEN';
+// 1. MapTiler API キー（ベースマップ・地形タイル用）
+//    取得先: https://cloud.maptiler.com/account/keys/
+const MAPTILER_KEY = 'YOUR_MAPTILER_API_KEY';
 
-// 2. 不動産情報ライブラリ API キー
+// ベースマップスタイル定義（MapLibre 用）
+const BASE_STYLES = {
+    'style-light':     `https://api.maptiler.com/maps/dataviz-light/style.json?key=${MAPTILER_KEY}`,
+    'style-streets':   `https://api.maptiler.com/maps/jp-mierune-streets/style.json?key=${MAPTILER_KEY}`,
+    'style-satellite': `https://api.maptiler.com/maps/hybrid/style.json?key=${MAPTILER_KEY}`,
+    'style-dark':      `https://api.maptiler.com/maps/jp-mierune-dark/style.json?key=${MAPTILER_KEY}`,
+};
+
+// 2. OpenAI API キー（AIエリア分析レポート用）
+//    取得先: https://platform.openai.com/api-keys
+const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY';
+
+// 3. 不動産情報ライブラリ API キー
 //    取得先: https://www.reinfolib.mlit.go.jp/
 const REINFOLIB_API_KEY = 'YOUR_REINFOLIB_API_KEY';
 
