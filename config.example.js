@@ -22,9 +22,13 @@ const BASE_STYLES = {
     'style-dark':      `https://api.maptiler.com/maps/jp-mierune-dark/style.json?key=${MAPTILER_KEY}`,
 };
 
-// 2. OpenAI API キー（AIエリア分析レポート用）
+// 2. OpenAI API キー（AIエリア分析レポート用・AI投資検証用）
 //    取得先: https://platform.openai.com/api-keys
 const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY';
+
+// 2b. Anthropic Claude API キー（AI投資検証用 — OpenAIの代わりに使用可能）
+//    取得先: https://console.anthropic.com/
+const CLAUDE_API_KEY = 'YOUR_CLAUDE_API_KEY';
 
 // 3. 不動産情報ライブラリ API キー
 //    取得先: https://www.reinfolib.mlit.go.jp/

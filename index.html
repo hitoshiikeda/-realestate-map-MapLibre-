@@ -57,6 +57,8 @@
             <button class="tool-btn" onclick="document.getElementById('custom-upload-input').click()">📂 データ取込</button>
             <input type="file" id="custom-upload-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleCustomUpload(event)">
             <button class="tool-btn" onclick="generateAIReport()">🤖 AIレポート</button>
+            <button class="tool-btn" onclick="startInvestmentAnalysis()">📋 AI投資検証</button>
+            <input type="file" id="investment-pdf-input" accept=".pdf,.jpg,.jpeg,.png,.txt" style="display:none;" onchange="handleInvestmentPdfUpload(event)">
         </div>
     </div>
 
@@ -251,6 +253,25 @@
         <div style="display:flex; gap:8px; margin-top:16px; justify-content:flex-end;">
             <button onclick="closeUploadModal()" style="padding:6px 16px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">キャンセル</button>
             <button onclick="applyCustomUpload()" style="padding:6px 16px; border:none; border-radius:4px; background:#2563eb; color:#fff; cursor:pointer; font-size:12px; font-weight:600;">地図に表示</button>
+        </div>
+    </div>
+</div>
+
+<!-- AI投資検証：半径入力モーダル -->
+<div id="investment-radius-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:8px; padding:24px; width:380px; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+        <h3 style="font-size:14px; font-weight:700; color:#1e3a5f; margin-bottom:8px;">📋 AI投資検証 - 検証範囲設定</h3>
+        <p style="font-size:11px; color:#6b7280; margin-bottom:6px;">取り込んだ物件概要:</p>
+        <div id="investment-pdf-info" style="font-size:12px; color:#374151; background:#f3f4f6; padding:8px; border-radius:4px; margin-bottom:12px; max-height:60px; overflow-y:auto;"></div>
+        <p style="font-size:11px; color:#6b7280; margin-bottom:6px;">物件住所を中心に、半径何キロ圏内のデータで検証しますか？</p>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
+            <span style="font-size:12px; color:#374151;">半径</span>
+            <input type="number" id="investment-radius-input" value="3" min="0.5" max="50" step="0.5" style="width:80px; padding:6px; border:1px solid #ccc; border-radius:4px; font-size:14px; text-align:center;">
+            <span style="font-size:12px; color:#374151;">km</span>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button onclick="closeInvestmentRadiusModal()" style="padding:6px 16px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer; font-size:12px;">キャンセル</button>
+            <button onclick="executeInvestmentAnalysis()" style="padding:6px 16px; border:none; border-radius:4px; background:#2563eb; color:#fff; cursor:pointer; font-size:12px; font-weight:600;">検証開始</button>
         </div>
     </div>
 </div>

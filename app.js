@@ -2710,6 +2710,473 @@ function showAIReportWindow(areaName, aiText, data) {
     if (win) win.addEventListener('unload', () => URL.revokeObjectURL(url), { once: true });
 }
 
+// ==================== AI投資検証 ====================
+let investmentPdfData = null; // { fileName, textContent }
+
+function startInvestmentAnalysis() {
+    investmentPdfData = null;
+    showToast('物件概要ファイルを選択してください（PDF・画像・テキスト）');
+    document.getElementById('investment-pdf-input').click();
+}
+
+async function handleInvestmentPdfUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    event.target.value = '';
+
+    showToast(`"${file.name}" を読み込み中...`);
+
+    try {
+        let textContent = '';
+        if (file.type === 'application/pdf') {
+            textContent = await extractTextFromPdf(file);
+        } else if (file.type.startsWith('image/')) {
+            textContent = await extractTextFromImage(file);
+        } else {
+            textContent = await file.text();
+        }
+
+        if (!textContent || textContent.trim().length < 10) {
+            showToast('ファイルからテキストを十分に抽出できませんでした。テキストファイルでの取込をお試しください。');
+            return;
+        }
+
+        investmentPdfData = { fileName: file.name, textContent: textContent.substring(0, 8000) };
+
+        // 半径入力モーダルを表示
+        document.getElementById('investment-pdf-info').textContent = `${file.name}（${(textContent.length).toLocaleString()}文字抽出）`;
+        const modal = document.getElementById('investment-radius-modal');
+        modal.style.display = 'flex';
+
+        showToast('ファイルを読み込みました。検証範囲を設定してください。');
+    } catch (err) {
+        console.error('File read error:', err);
+        showToast(`ファイル読み込みに失敗しました: ${err.message}`);
+    }
+}
+
+async function extractTextFromPdf(file) {
+    // pdf.jsがロードされていない場合は動的にロード
+    if (typeof pdfjsLib === 'undefined') {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(' ') + '\n';
+    }
+    return fullText;
+}
+
+async function extractTextFromImage(file) {
+    // 画像はBase64に変換してAIに送る（テキスト抽出はAI側で行う）
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            resolve(`[画像ファイル: ${file.name}]\n※画像内のテキストをAIが直接解析します。`);
+            investmentPdfData = investmentPdfData || {};
+            investmentPdfData.imageBase64 = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+function closeInvestmentRadiusModal() {
+    document.getElementById('investment-radius-modal').style.display = 'none';
+}
+
+async function executeInvestmentAnalysis() {
+    closeInvestmentRadiusModal();
+
+    if (!investmentPdfData) {
+        showToast('物件概要データがありません。もう一度お試しください。');
+        return;
+    }
+
+    const hasOpenAI = OPENAI_API_KEY && OPENAI_API_KEY !== '' && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY';
+    const hasClaude = typeof CLAUDE_API_KEY !== 'undefined' && CLAUDE_API_KEY && CLAUDE_API_KEY !== '' && CLAUDE_API_KEY !== 'YOUR_CLAUDE_API_KEY';
+
+    if (!hasOpenAI && !hasClaude) {
+        showToast('config.js に OpenAI API キーまたは Claude API キーを設定してください');
+        return;
+    }
+
+    const radiusKm = parseFloat(document.getElementById('investment-radius-input').value) || 3;
+
+    showToast('周辺データを収集中...');
+
+    // 物件概要テキストから住所を推定してジオコーディング
+    let propertyLocation = null;
+    let propertyAddress = '';
+
+    // テキストから住所らしき部分を抽出
+    const addressMatch = investmentPdfData.textContent.match(/(?:所在地|住所|所在|物件所在地)[:\s：]*([^\n,、]{5,50})/);
+    if (addressMatch) {
+        propertyAddress = addressMatch[1].trim();
+    } else {
+        // 都道府県から始まるパターン
+        const prefMatch = investmentPdfData.textContent.match(/((?:東京都|北海道|(?:京都|大阪)府|.{2,3}県)[^\n,、]{3,40})/);
+        if (prefMatch) propertyAddress = prefMatch[1].trim();
+    }
+
+    if (propertyAddress) {
+        try {
+            const geoRes = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(propertyAddress)}`);
+            const geoData = await geoRes.json();
+            if (geoData && geoData.length > 0) {
+                const coords = geoData[0].geometry.coordinates;
+                propertyLocation = { lng: coords[0], lat: coords[1] };
+            }
+        } catch (e) {
+            console.warn('Geocoding failed:', e);
+        }
+    }
+
+    if (!propertyLocation) {
+        // 住所が取得できない場合は現在の地図中心を使用
+        const center = map.getCenter();
+        propertyLocation = { lng: center.lng, lat: center.lat };
+        if (!propertyAddress) propertyAddress = '（住所不明 - 地図中心位置を使用）';
+        showToast('住所を自動検出できなかったため、現在の地図中心位置を使用します');
+    }
+
+    // 地図を物件位置に移動
+    map.flyTo({ center: [propertyLocation.lng, propertyLocation.lat], zoom: 14, duration: 1500 });
+
+    // 半径円のポリゴンを作成
+    const centerPt = turf.point([propertyLocation.lng, propertyLocation.lat]);
+    const circle = turf.circle(centerPt, radiusKm, { steps: 64, units: 'kilometers' });
+
+    showToast('周辺の物件・人口・地価・ハザード情報を分析中...');
+
+    // 1. 周辺物件データ
+    const nearbyProperties = (state.currentFilteredData || []).filter(f => {
+        if (!f.geometry || !f.geometry.coordinates) return false;
+        const pt = turf.point(f.geometry.coordinates);
+        return turf.booleanPointInPolygon(pt, circle);
+    });
+
+    // 2. 周辺人口データ
+    let popSummary = { pop2020: 0, pop2025: 0, pop2050: 0, meshCount: 0 };
+    try {
+        const popSource = map.getSource('pop-mesh');
+        if (popSource && popSource._data && popSource._data.features) {
+            popSource._data.features.forEach(f => {
+                const pt = turf.centroid(f);
+                if (turf.booleanPointInPolygon(pt, circle)) {
+                    popSummary.pop2020 += (f.properties.PTN_2020 || 0);
+                    popSummary.pop2025 += (f.properties.PTN_2025 || 0);
+                    popSummary.pop2050 += (f.properties.PTN_2050 || 0);
+                    popSummary.meshCount++;
+                }
+            });
+        }
+    } catch(e) {}
+
+    // 3. 周辺地価データ
+    let landPrices = [];
+    try {
+        const landSource = map.getSource('landprice');
+        if (landSource && landSource._data && landSource._data.features) {
+            landSource._data.features.forEach(f => {
+                if (!f.geometry) return;
+                const pt = turf.point(f.geometry.coordinates);
+                if (turf.booleanPointInPolygon(pt, circle) && f.properties.L01_008) {
+                    landPrices.push(parseInt(f.properties.L01_008));
+                }
+            });
+        }
+    } catch(e) {}
+
+    const avgLandPrice = landPrices.length > 0 ? Math.round(landPrices.reduce((a,b) => a+b, 0) / landPrices.length) : null;
+
+    // 4. 周辺の用途地域
+    let zoningInfo = [];
+    try {
+        const zoningSource = map.getSource('zoning');
+        if (zoningSource && zoningSource._data && zoningSource._data.features) {
+            const zoningSet = new Set();
+            zoningSource._data.features.forEach(f => {
+                const pt = turf.centroid(f);
+                if (turf.booleanPointInPolygon(pt, circle)) {
+                    const code = f.properties.A29_004 || f.properties.youto_code;
+                    const name = ZONING_TYPE_MAP[code] || code;
+                    if (name) zoningSet.add(name);
+                }
+            });
+            zoningInfo = Array.from(zoningSet);
+        }
+    } catch(e) {}
+
+    // 5. 周辺の駅・交通
+    let stationInfo = [];
+    try {
+        const stSource = map.getSource('stations');
+        if (stSource && stSource._data && stSource._data.features) {
+            stSource._data.features.forEach(f => {
+                if (!f.geometry) return;
+                const pt = turf.point(f.geometry.coordinates);
+                if (turf.booleanPointInPolygon(pt, circle)) {
+                    stationInfo.push({
+                        name: f.properties.S12_001 || f.properties.station_name || '不明',
+                        passengers: f.properties.S12_033 || f.properties.passengers || 0
+                    });
+                }
+            });
+        }
+    } catch(e) {}
+
+    // 6. アセット内訳
+    const assetBreakdown = {};
+    nearbyProperties.forEach(f => {
+        const t = f.properties.assetType || 'その他';
+        assetBreakdown[t] = (assetBreakdown[t] || 0) + 1;
+    });
+
+    // 7. 利回り統計
+    let yields = [];
+    nearbyProperties.forEach(f => {
+        for (let y = 2026; y >= 2020; y--) {
+            const v = f.properties[`利回り${y}`];
+            if (v != null && v !== '') { yields.push(Number(v) * 100); break; }
+        }
+    });
+    const avgYield = yields.length > 0 ? (yields.reduce((a,b) => a+b, 0) / yields.length).toFixed(2) : null;
+
+    const popChangeRate = popSummary.pop2020 > 0
+        ? ((popSummary.pop2050 / popSummary.pop2020 - 1) * 100).toFixed(1) : '不明';
+
+    // AI分析プロンプト作成
+    const prompt = `あなたは不動産投資リスク分析の専門家です。以下の物件概要と周辺データを基に、この物件を契約することによるリスクと投資妥当性を詳細に分析してください。
+
+【物件概要（取り込みデータ）】
+${investmentPdfData.textContent.substring(0, 4000)}
+
+【物件所在地】${propertyAddress}
+【検証範囲】半径${radiusKm}km圏内
+
+【周辺物件データ（半径${radiusKm}km）】
+- 周辺登録物件数: ${nearbyProperties.length}件
+- アセット構成: ${Object.entries(assetBreakdown).map(([k,v]) => k + ':' + v + '件').join(', ') || 'データなし'}
+- 周辺平均利回り: ${avgYield ? avgYield + '%' : 'データなし'}
+
+【周辺人口動態】
+- 2020年人口: ${Math.round(popSummary.pop2020).toLocaleString()}人（${popSummary.meshCount}メッシュ）
+- 2025年推計: ${Math.round(popSummary.pop2025).toLocaleString()}人
+- 2050年推計: ${Math.round(popSummary.pop2050).toLocaleString()}人
+- 2020→2050年変化率: ${popChangeRate}%
+
+【周辺地価情報】
+- 地価公示地点数: ${landPrices.length}件
+- 平均地価: ${avgLandPrice ? (avgLandPrice / 10000).toFixed(1) + '万円/㎡' : 'データなし'}
+- 最高地価: ${landPrices.length > 0 ? (Math.max(...landPrices) / 10000).toFixed(1) + '万円/㎡' : 'データなし'}
+- 最低地価: ${landPrices.length > 0 ? (Math.min(...landPrices) / 10000).toFixed(1) + '万円/㎡' : 'データなし'}
+
+【周辺用途地域】
+${zoningInfo.length > 0 ? zoningInfo.join('、') : 'データなし'}
+
+【周辺交通アクセス】
+${stationInfo.length > 0 ? stationInfo.map(s => s.name + '（乗降客数: ' + Number(s.passengers).toLocaleString() + '人/日）').join('\n') : 'データなし'}
+
+以下の構成で投資検証レポートを作成してください:
+1. 物件概要の要約（物件概要データから読み取れる主要情報）
+2. 立地評価（交通アクセス、用途地域、周辺環境の分析）
+3. 市場分析（周辺物件との比較、利回り水準、地価動向）
+4. 人口動態リスク（将来の人口推移による影響）
+5. 投資リスク要因（5段階評価付き - 高リスク/やや高/中程度/やや低/低リスク）
+  - 空室リスク
+  - 地価下落リスク
+  - 人口減少リスク
+  - 自然災害リスク
+  - 競合リスク
+6. 投資判断の総合評価（推奨度: A〜E の5段階）
+7. 注意点・推奨アクション（3-5項目）
+
+各セクションは具体的な数値を根拠に分析してください。`;
+
+    showToast('AIで投資リスクを分析中...');
+
+    try {
+        let aiText = '';
+        let aiProvider = '';
+
+        if (hasOpenAI) {
+            aiProvider = 'OpenAI GPT';
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.5,
+                    max_tokens: 4000
+                })
+            });
+            if (!res.ok) throw new Error(`OpenAI API error: ${res.status}`);
+            const json = await res.json();
+            aiText = json.choices?.[0]?.message?.content || '';
+        } else if (hasClaude) {
+            aiProvider = 'Claude';
+            const res = await fetch('http://localhost:3001/claude', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': CLAUDE_API_KEY
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-20250514',
+                    max_tokens: 4000,
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+            if (!res.ok) throw new Error(`Claude API error: ${res.status}`);
+            const json = await res.json();
+            aiText = json.content?.[0]?.text || '';
+        }
+
+        if (!aiText) throw new Error('AIからの応答が空です');
+
+        showInvestmentReportWindow(propertyAddress, radiusKm, aiText, aiProvider, {
+            nearbyProperties, popSummary, avgLandPrice, avgYield, assetBreakdown, zoningInfo, stationInfo, landPrices
+        });
+
+        showToast('投資検証レポートを生成しました');
+    } catch (err) {
+        console.error('Investment analysis error:', err);
+        showToast(`投資検証に失敗しました: ${err.message}`);
+    }
+}
+
+function showInvestmentReportWindow(address, radiusKm, aiText, aiProvider, data) {
+    const date = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+    const mapImg = map.getCanvas().toDataURL('image/png');
+
+    const formatText = (text) => {
+        return text
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/^### (.+)$/gm, '<h3 style="color:#1e3a5f;font-size:14px;margin:12px 0 6px;border-left:3px solid #dc2626;padding-left:8px;">$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2 style="color:#1e3a5f;font-size:16px;margin:16px 0 8px;">$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1 style="color:#1e3a5f;font-size:18px;margin:16px 0 8px;">$1</h1>')
+            .replace(/^[-*] (.+)$/gm, '<li style="margin:3px 0;">$1</li>')
+            .replace(/(<li.*<\/li>\n?)+/g, '<ul style="padding-left:18px;margin:6px 0;">$&</ul>')
+            .replace(/\n{2,}/g, '<br><br>')
+            .replace(/\n/g, '<br>');
+    };
+
+    const popChangeRate = data.popSummary.pop2020 > 0
+        ? ((data.popSummary.pop2050 / data.popSummary.pop2020 - 1) * 100).toFixed(1) : '-';
+
+    const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>AI投資検証レポート - ${address} (${date})</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Helvetica Neue", "Hiragino Kaku Gothic ProN", sans-serif; font-size: 12px; color: #1f2937; background: #fff; }
+  .page { max-width: 800px; margin: 0 auto; padding: 30px; }
+  .header { border-bottom: 3px solid #991b1b; padding-bottom: 10px; margin-bottom: 20px; }
+  .header-title { font-size: 22px; font-weight: 800; color: #991b1b; }
+  .header-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .header-address { font-size: 14px; color: #374151; margin-top: 6px; font-weight: 600; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+  .summary-card { background: #fef2f2; border-left: 4px solid #dc2626; border-radius: 4px; padding: 10px; }
+  .summary-card .label { font-size: 10px; color: #6b7280; }
+  .summary-card .value { font-size: 20px; font-weight: 800; color: #991b1b; }
+  .summary-card .unit { font-size: 10px; color: #6b7280; }
+  .map-img { width: 100%; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 20px; }
+  .ai-section { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+  .ai-badge { display: inline-block; background: #dc2626; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-bottom: 10px; }
+  .ai-content { font-size: 12px; line-height: 1.8; color: #374151; }
+  .info-section { background: #f0f4ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .info-title { font-size: 13px; font-weight: 700; color: #1e3a5f; margin-bottom: 8px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; }
+  .info-grid dt { color: #6b7280; }
+  .info-grid dd { color: #1f2937; font-weight: 600; }
+  .footer { border-top: 1px solid #e5e7eb; padding-top: 10px; font-size: 10px; color: #9ca3af; display: flex; justify-content: space-between; }
+  @media print {
+    @page { size: A4; margin: 10mm; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="header-title">AI投資検証レポート</div>
+    <div class="header-address">${address}（半径${radiusKm}km圏内分析）</div>
+    <div class="header-sub">REI-Map Investment Risk Analysis | ${date}</div>
+  </div>
+
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="label">周辺物件数</div>
+      <div class="value">${data.nearbyProperties.length}<span class="unit">件</span></div>
+    </div>
+    <div class="summary-card">
+      <div class="label">周辺平均利回り</div>
+      <div class="value">${data.avgYield || '-'}<span class="unit">%</span></div>
+    </div>
+    <div class="summary-card">
+      <div class="label">平均地価</div>
+      <div class="value">${data.avgLandPrice ? (data.avgLandPrice / 10000).toFixed(1) : '-'}<span class="unit">万円/m2</span></div>
+    </div>
+    <div class="summary-card">
+      <div class="label">人口変化率</div>
+      <div class="value">${popChangeRate}<span class="unit">%</span></div>
+    </div>
+  </div>
+
+  <img class="map-img" src="${mapImg}" alt="Map">
+
+  <div class="info-section">
+    <div class="info-title">周辺環境データ</div>
+    <div class="info-grid">
+      <dt>用途地域</dt><dd>${data.zoningInfo.length > 0 ? data.zoningInfo.slice(0, 3).join('、') : 'データなし'}</dd>
+      <dt>最寄駅</dt><dd>${data.stationInfo.length > 0 ? data.stationInfo.slice(0, 2).map(s => s.name).join('、') : 'データなし'}</dd>
+      <dt>地価公示地点数</dt><dd>${data.landPrices.length}件</dd>
+      <dt>人口メッシュ数</dt><dd>${data.popSummary.meshCount}メッシュ</dd>
+    </div>
+  </div>
+
+  <div class="ai-section">
+    <span class="ai-badge">📋 AI投資検証 (${aiProvider})</span>
+    <div class="ai-content">${formatText(aiText)}</div>
+  </div>
+
+  <div class="footer">
+    <span>本レポートはAI（${aiProvider}）により自動生成されました。投資判断は必ず専門家にご相談ください。</span>
+    <span>${date}</span>
+  </div>
+</div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank', 'width=900,height=800');
+    if (win) win.addEventListener('unload', () => URL.revokeObjectURL(url), { once: true });
+}
+
+// ==================== ここまでAI投資検証 ====================
+
 function renderPopulationChart(canvas, labels, data, base) {
     const bgColors = data.map(v =>
         v === null || v === undefined ? 'rgba(180,180,180,0.5)'

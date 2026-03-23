@@ -19,9 +19,13 @@ const BASE_STYLES = {
     'style-dark':      `https://api.maptiler.com/maps/jp-mierune-dark/style.json?key=${MAPTILER_KEY}`,
 };
 
-// OpenAI API キー（AIエリア分析レポート用）
+// OpenAI API キー（AIエリア分析レポート用・AI投資検証用）
 // GitHub Pages では利用不可 — ローカル環境で config.js を上書きして設定してください
 const OPENAI_API_KEY = '';
+
+// Anthropic Claude API キー（AI投資検証用 — OpenAIの代わりに使用可能）
+// GitHub Pages では利用不可 — ローカル環境で config.js を上書きして設定してください
+const CLAUDE_API_KEY = '';
 
 // 不動産情報ライブラリ API
 // GitHub Pages では利用不可 — ローカル環境で proxy.js を起動して利用してください
